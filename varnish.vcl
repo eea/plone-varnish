@@ -281,7 +281,14 @@ sub vcl_backend_response {
         set beresp.http.X-Varnish-Caching-Rule-Id = "xml-rdf-files";
         set beresp.http.X-Varnish-Header-Set-Id = "cache-in-proxy-24-hours";
     }
-
+    
+    # cache all static objects for 1 day
+    if (bereq.url ~ "^/static/") {
+        set beresp.ttl = <VARNISH_STATIC_TTL>;
+        set beresp.http.X-Varnish-Caching-Rule-Id = "static-files";
+        set beresp.http.X-Varnish-Header-Set-Id = "cache-in-proxy-<VARNISH_STATIC_TTL>";
+    }
+    
     # Headers for webfonts and truetype fonts
     if (beresp.http.Content-Type ~ "(application\/vnd.ms-fontobject|font\/truetype|application\/font-woff|application\/x-font-woff)") {
         # fix for loading Font Awesome under IE11 on Win7, see #94853
@@ -343,8 +350,8 @@ sub vcl_backend_response {
         return(deliver);
     }
 
-    set beresp.ttl = <VARNISH_BERESP_GRACE>;
-    set beresp.ttl = <VARNISH_BERESP_KEEP>;
+    set beresp.grace = <VARNISH_BERESP_GRACE>;
+    set beresp.keep = <VARNISH_BERESP_KEEP>;
     return (deliver);
 
 }
