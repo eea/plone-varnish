@@ -104,14 +104,14 @@ sub vcl_recv {
 
     set req.http.UrlNoQs = regsub(req.url, "\?.*$", "");
     # Do not cache authenticated requests
-    if (req.http.Cookie && req.http.Cookie ~ "__ac(|_(name|password|persistent))=")
+    if (req.http.Cookie && req.http.Cookie ~ "__ac(|__\w+|_(name|password|persistent))=")
     {
        if (req.http.UrlNoQs ~ "\.(js|css)$") {
             unset req.http.cookie;
             return(pipe);
         }
 
-        set req.http.X-Username = regsub( req.http.Cookie, "^.*?__ac=([^;]*);*.*$", "\1" );
+        set req.http.X-Username = regsub( req.http.Cookie, "^.*?__ac(|__\w+)=([^;]*);*.*$", "\2" );
 
         # pass (no caching)
         unset req.http.If-Modified-Since;
@@ -165,7 +165,7 @@ sub vcl_recv {
     if (req.http.Cookie) {
         set req.http.Cookie = ";" + req.http.Cookie;
         set req.http.Cookie = regsuball(req.http.Cookie, "; +", ";");
-        set req.http.Cookie = regsuball(req.http.Cookie, ";(statusmessages|cart|__ac|_ZopeId|__cp)=", "; \1=");
+        set req.http.Cookie = regsuball(req.http.Cookie, ";(statusmessages|cart|__ac|__ac__\w+|_ZopeId|__cp)=", "; \1=");
         set req.http.Cookie = regsuball(req.http.Cookie, ";[^ ][^;]*", "");
         set req.http.Cookie = regsuball(req.http.Cookie, "^[; ]+|[; ]+$", "");
         if (req.http.Cookie == "") {
