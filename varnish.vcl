@@ -265,6 +265,17 @@ sub vcl_backend_response {
     set beresp.http.x-url = regsub(bereq.url, "\/\/", "/");
     set beresp.http.X-Backend-Name = beresp.backend.name;
 
+
+    #text/html text/plain text/xml text/css text/javascript application/x-javascript application/javascript
+    # GZip the cached content if possible
+    if (beresp.http.content-type ~ "text") {
+        set beresp.do_gzip = <VARNISH_GZIP_ENABLED>;
+    }
+    if (beresp.http.content-type ~ "javascript") {
+        set beresp.do_gzip = <VARNISH_GZIP_ENABLED>;
+    }
+
+
     # stream possibly large files
     if (bereq.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
         unset beresp.http.set-cookie;
