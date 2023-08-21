@@ -275,6 +275,9 @@ sub vcl_backend_response {
         set beresp.do_gzip = <VARNISH_GZIP_ENABLED>;
     }
 
+    if (beresp.http.content-type ~ "application/json") {
+        set beresp.do_gzip = <VARNISH_GZIP_JSON_ENABLED>;
+    }
 
     # stream possibly large files
     if (bereq.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
