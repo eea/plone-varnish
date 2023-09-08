@@ -104,7 +104,8 @@ sub vcl_recv {
 
     set req.http.UrlNoQs = regsub(req.url, "\?.*$", "");
     # Do not cache authenticated requests
-    if (req.http.Cookie && req.http.Cookie ~ "__ac(|__\w+|_(name|password|persistent))=")
+    if (req.http.Cookie && req.http.Cookie ~ "(__ac(|__\w+|_(name|password|persistent))=|auth_token=)")
+
     {
        if (req.http.UrlNoQs ~ "\.(js|css)$") {
             unset req.http.cookie;
