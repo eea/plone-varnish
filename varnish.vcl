@@ -104,7 +104,7 @@ sub vcl_recv {
 
     set req.http.UrlNoQs = regsub(req.url, "\?.*$", "");
     # Do not cache authenticated requests
-    if (req.http.Cookie && req.http.Cookie ~ "__ac(|__\w+|_(name|password|persistent))=")
+    if (req.http.Cookie && req.http.Cookie ~ "(__ac(|__\w+|_(name|password|persistent))|auth_token)=")
     {
        if (req.http.UrlNoQs ~ "\.(js|css)$") {
             unset req.http.cookie;
@@ -165,7 +165,7 @@ sub vcl_recv {
     if (req.http.Cookie) {
         set req.http.Cookie = ";" + req.http.Cookie;
         set req.http.Cookie = regsuball(req.http.Cookie, "; +", ";");
-        set req.http.Cookie = regsuball(req.http.Cookie, ";(authomatic|statusmessages|cart|__ac|__ac__\w+|_ZopeId|__cp)=", "; \1=");
+        set req.http.Cookie = regsuball(req.http.Cookie, ";(authomatic|statusmessages|cart|__ac|__ac__\w+|_ZopeId|__cp|auth_token)=", "; \1=");
         set req.http.Cookie = regsuball(req.http.Cookie, ";[^ ][^;]*", "");
         set req.http.Cookie = regsuball(req.http.Cookie, "^[; ]+|[; ]+$", "");
         if (req.http.Cookie == "") {
