@@ -20,8 +20,9 @@
 * `VARNISH_DNS_TTL` - how often will varnish check the IP of the hostname/rancher service
 * `VARNISH_BERESP_TTL`, `VARNISH_BERESP_GRACE`, `VARNISH_BERESP_KEEP` - Object timeline configuration https://docs.varnish-software.com/tutorials/object-lifetime/
 * `VARNISH_STATIC_TTL` - TTL for /static/ files
-* `VARNISH_GZIP_ENABLED` - enable gzip on content types text/ and javascript
-* `VARNISH_GZIP_JSON_ENABLED` - enable gzip on content types json
+* `VARNISH_GZIP_ENABLED` - default false, enable gzip on content types text/ and javascript
+* `VARNISH_GZIP_JSON_ENABLED` - default false, enable gzip on content types json
+* `VARNISH_CLEAR_OTHER_COOKIES` - default true, clean up other cookies besides whitelisted ones
 
 ## How to add new variable in varnish.vcl
 
