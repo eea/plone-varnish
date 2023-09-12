@@ -162,7 +162,7 @@ sub vcl_recv {
 
 
     /* Cookie whitelist, remove all not in there */
-    if (req.http.Cookie) {
+    if (req.http.Cookie && <VARNISH_CLEAR_OTHER_COOKIES> ) {
         set req.http.Cookie = ";" + req.http.Cookie;
         set req.http.Cookie = regsuball(req.http.Cookie, "; +", ";");
         set req.http.Cookie = regsuball(req.http.Cookie, ";(authomatic|statusmessages|cart|__ac|__ac__\w+|_ZopeId|__cp|auth_token)=", "; \1=");
