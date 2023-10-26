@@ -151,7 +151,7 @@ sub vcl_recv {
     }
 
     ## scale
-    if (req.method == "GET" && req.url ~ "(icon|tile|thumb|mini|preview|teaser|large|larger|great|huge|small|medium|big|tiny)$") {
+    if (req.method == "GET" && req.url ~ "(icon|tile|thumb|mini|preview|teaser|large|larger|great|huge|small|medium|big|tiny|huge4000|huge3000|huge2400)$") {
         return(hash);
     }
 
