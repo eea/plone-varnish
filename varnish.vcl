@@ -102,6 +102,12 @@ sub vcl_recv {
         return(pass);
     }
 
+
+    # Cache static files, except the big ones
+    if (req.method == "GET" && req.url ~ "^/static/" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
+        return(hash);
+    }
+
     set req.http.UrlNoQs = regsub(req.url, "\?.*$", "");
     # Do not cache authenticated requests
     if (req.http.Cookie && req.http.Cookie ~ "(__ac(|__\w+|_(name|password|persistent))|auth_token)=")
