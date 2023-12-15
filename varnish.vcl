@@ -104,7 +104,7 @@ sub vcl_recv {
 
 
     # Cache static files, except the big ones
-    if (req.method == "GET" && req.url ~ "^/static/" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
+    if (req.method == "GET" && req.url ~ "^(/[a-zA-Z0-9\_\-]*)?/static/" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
         return(hash);
     }
 
@@ -303,7 +303,7 @@ sub vcl_backend_response {
     }
     
     # cache all static objects for 1 day
-    if (bereq.url ~ "^/static/") {
+    if (bereq.url ~ "^(/[a-zA-Z0-9\_\-]*)?/static/") {
         set beresp.ttl = <VARNISH_STATIC_TTL>;
         set beresp.http.X-Varnish-Caching-Rule-Id = "static-files";
         set beresp.http.X-Varnish-Header-Set-Id = "cache-in-proxy-<VARNISH_STATIC_TTL>";
