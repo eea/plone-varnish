@@ -147,9 +147,6 @@ sub vcl_backend_response {
         set beresp.http.X-Cacheable = "NO: Not Cacheable";
     }
 
-    set beresp.http.X-Backend-Name = beresp.backend.name;
-    set beresp.http.X-Backend-IP = beresp.backend.ip;
-
     set beresp.grace = 30m;
 
     #text/html text/plain text/xml text/css text/javascript application/x-javascript application/javascript
