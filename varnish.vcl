@@ -23,13 +23,24 @@ acl purge {
     "10.120.30.0/24"; # Internal networks
 }
 
-
-
 sub vcl_recv {
-
+    
     set req.backend_hint = cluster.backend("<VARNISH_BACKEND>");
-    set req.http.X-Varnish-Routed = "1";
-
+    
+    # Before anything else we need to fix gzip compression
+    if (req.http.Accept-Encoding) {
+        if (req.url ~ "\.(jpg|png|gif|gz|tgz|bz2|tbz|mp3|ogg)$") {
+            # No point in compressing these
+            unset req.http.Accept-Encoding;
+        } else if (req.http.Accept-Encoding ~ "gzip") {
+            set req.http.Accept-Encoding = "gzip";
+        } else if (req.http.Accept-Encoding ~ "deflate") {
+            set req.http.Accept-Encoding = "deflate";
+        } else {
+            # unknown algorithm
+            unset req.http.Accept-Encoding;
+        }
+    }
 
     if (req.http.X-Forwarded-Proto == "https" ) {
         set req.http.X-Forwarded-Port = "443";
@@ -40,59 +51,6 @@ sub vcl_recv {
 
     set req.http.X-Username = "Anonymous";
 
-    # PURGE - The CacheFu product can invalidate updated URLs 
-    if (req.method == "PURGE") {
-            if (!client.ip ~ purge) {
-                return (synth(405, "Not allowed."));
-            }
-
-            # replace normal purge with ban-lurker way - may not work
-            # Cleanup double slashes: '//' -> '/' - refs #95891
-            ban ("obj.http.x-url == " + regsub(req.url, "\/\/", "/"));
-            return (synth(200, "Ban added. URL will be purged by lurker"));
-    }
-
-    if (req.method == "BAN") {
-        # Same ACL check as above:
-        if (!client.ip ~ purge) {
-            return(synth(403, "Not allowed."));
-        }
-        ban("req.http.host == " + req.http.host +
-            " && req.url == " + req.url);
-            # Throw a synthetic page so the
-            # request won't go to the backend.
-            return(synth(200, "Ban added")
-        );
-    }
-
-    # Only deal with "normal" types
-    if (req.method != "GET" &&
-           req.method != "HEAD" &&
-           req.method != "PUT" &&
-           req.method != "POST" &&
-           req.method != "TRACE" &&
-           req.method != "OPTIONS" &&
-           req.method != "DELETE") {
-        /* Non-RFC2616 or CONNECT which is weird. */
-        return(pipe);
-    }
-
-
-    # Only cache GET or HEAD requests. This makes sure the POST requests are always passed.
-    if (req.method != "GET" && req.method != "HEAD") {
-        return(pass);
-    }
-
-
-    if (req.http.Expect) {
-        return(pipe);
-    }
-
-    if (req.http.If-None-Match && !req.http.If-Modified-Since) {
-        return(pass);
-    }
-
-
     # Do not cache RestAPI authenticated requests
     if (req.http.Authorization || req.http.Authenticate) {
         set req.http.X-Username = "Authenticated (RestAPI)";
@@ -102,22 +60,10 @@ sub vcl_recv {
         return(pass);
     }
 
-
-    # Cache static files, except the big ones
-    if (req.method == "GET" && req.url ~ "^(/[a-zA-Z0-9\_\-]*)?/static/" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
-        return(hash);
-    }
-
-    set req.http.UrlNoQs = regsub(req.url, "\?.*$", "");
     # Do not cache authenticated requests
-    if (req.http.Cookie && req.http.Cookie ~ "(__ac(|__\w+|_(name|password|persistent))|auth_token)=")
+    if (req.http.Cookie && req.http.Cookie ~ "__ac__.*?(|_(name|password|persistent))=")
     {
-       if (req.http.UrlNoQs ~ "\.(js|css)$") {
-            unset req.http.cookie;
-            return(pipe);
-        }
-
-        set req.http.X-Username = regsub( req.http.Cookie, "^.*?__ac(|__\w+)=([^;]*);*.*$", "\2" );
+        set req.http.X-Username = regsub( req.http.Cookie, "^.*?__ac__.*?=([^;]*);*.*$", "\1" );
 
         # pass (no caching)
         unset req.http.If-Modified-Since;
@@ -132,7 +78,28 @@ sub vcl_recv {
         return(pass);
     }
 
+    # Handle special requests
+    if (req.method != "GET" && req.method != "HEAD") {
 
+        # POST - Logins and edits
+        if (req.method == "POST") {
+            return(pass);
+        }
+
+        # PURGE - The CacheFu product can invalidate updated URLs
+        if (req.method == "PURGE") {
+            if (!client.ip ~ purge) {
+                return (synth(405, "Not allowed."));
+            }
+
+            # replace normal purge with ban-lurker way - may not work
+            # Cleanup double slashes: '//' -> '/' - refs #95891
+            ban ("obj.http.x-url == " + regsub(req.url, "\/\/", "/"));
+            return (synth(200, "Ban added. URL will be purged by lurker"));
+        }
+
+        return(pass);
+    }
 
     ### always cache these items:
 
@@ -146,49 +113,20 @@ sub vcl_recv {
         return(hash);
     }
 
-    ## multimedia ?
-    # if (req.method == "GET" && req.url ~ "\.(svg|swf|ico|mp3|mp4|m4a|ogg|mov|avi|wmv)$") {
-    #    return(hash);
-    # }
+    ## multimedia
+    if (req.method == "GET" && req.url ~ "\.(svg|swf|ico|mp3|mp4|m4a|ogg|mov|avi|wmv)$") {
+        return(hash);
+    }
 
     ## xml
     if (req.method == "GET" && req.url ~ "\.(xml)$") {
         return(hash);
     }
 
-    ## scale
-    if (req.method == "GET" && req.url ~ "(icon|tile|thumb|mini|preview|teaser|large|larger|great|huge|small|medium|big|tiny|huge4000|huge3000|huge2400)$") {
-        return(hash);
-    }
-
-    ## for some urls or request we can do a pass here (no caching) ?
+    ## for some urls or request we can do a pass here (no caching)
     if (req.method == "GET" && (req.url ~ "aq_parent" || req.url ~ "manage$" || req.url ~ "manage_workspace$" || req.url ~ "manage_main$" || req.url ~ "@@rdf")) {
         return(pass);
     }
-
-
-    /* Cookie whitelist, remove all not in there */
-    if (req.http.Cookie && <VARNISH_CLEAR_OTHER_COOKIES> ) {
-        set req.http.Cookie = ";" + req.http.Cookie;
-        set req.http.Cookie = regsuball(req.http.Cookie, "; +", ";");
-        set req.http.Cookie = regsuball(req.http.Cookie, ";(authomatic|statusmessages|cart|__ac|__ac__\w+|_ZopeId|__cp|auth_token)=", "; \1=");
-        set req.http.Cookie = regsuball(req.http.Cookie, ";[^ ][^;]*", "");
-        set req.http.Cookie = regsuball(req.http.Cookie, "^[; ]+|[; ]+$", "");
-        if (req.http.Cookie == "") {
-            unset req.http.Cookie;
-        }
-    }
-
-
-    # Large static files should be piped, so they are delivered directly to the end-user without
-    # waiting for Varnish to fully read the file first.
-
-    if (req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
-        unset req.http.Cookie;
-        return(pipe);
-    }
-
-
 
     ## lookup anything else
     return(hash);
@@ -197,80 +135,22 @@ sub vcl_recv {
 sub vcl_pipe {
     # This is not necessary if we do not do any request rewriting
     set req.http.connection = "close";
-    return(pipe);
-}
-
-
-sub vcl_pass {
-    return (fetch);
-}
-
-sub vcl_purge {
-    return (synth(200, "Purged"));
-}
-
-sub vcl_hit {
-    if (obj.ttl >= 0s) {
-        // A pure unadultered hit, deliver it
-        # normal hit
-        return (deliver);
-    }
-
-    # We have no fresh fish. Lets look at the stale ones.
-    if (std.healthy(req.backend_hint)) {
-        # Backend is healthy. Limit age to 10s.
-        if (obj.ttl + 10s > 0s) {
-            set req.http.grace = "normal(limited)";
-            return (deliver);
-        } else {
-            # No candidate for grace. Fetch a fresh object.
-            return(pass);
-        }
-    } else {
-        # backend is sick - use full grace
-        // Object is in grace, deliver it
-        // Automatically triggers a background fetch
-        if (obj.ttl + obj.grace > 0s) {
-            set req.http.grace = "full";
-            return (deliver);
-        } else {
-            # no graced object.
-            return (pass);
-        }
-    }
-
-    if (req.method == "PURGE") {
-        set req.method = "GET";
-        set req.http.X-purger = "Purged";
-        return(synth(200, "Purged. in hit " + req.url));
-    }
-
-    // fetch & deliver once we get the result
-    return (pass); # Dead code, keep as a safeguard
-}
-
-sub vcl_miss {
-
-    if (req.method == "PURGE") {
-        set req.method = "GET";
-        set req.http.X-purger = "Purged-possibly";
-        return(synth(200, "Purged. in miss " + req.url));
-    }
-
-    // fetch & deliver once we get the result
-    return (fetch);
-}
-
-sub vcl_backend_fetch{
-    return (fetch);
 }
 
 sub vcl_backend_response {
     # needed for ban-lurker
     # Cleanup double slashes: '//' -> '/' - refs #95891
     set beresp.http.x-url = regsub(bereq.url, "\/\/", "/");
-    set beresp.http.X-Backend-Name = beresp.backend.name;
 
+    # Varnish determined the object was not cacheable
+    if (!(beresp.ttl > 0s)) {
+        set beresp.http.X-Cacheable = "NO: Not Cacheable";
+    }
+
+    set beresp.http.X-Backend-Name = beresp.backend.name;
+    set beresp.http.X-Backend-IP = beresp.backend.ip;
+
+    set beresp.grace = 30m;
 
     #text/html text/plain text/xml text/css text/javascript application/x-javascript application/javascript
     # GZip the cached content if possible
@@ -285,30 +165,13 @@ sub vcl_backend_response {
         set beresp.do_gzip = <VARNISH_GZIP_JSON_ENABLED>;
     }
 
-    # stream possibly large files
-    if (bereq.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
-        unset beresp.http.set-cookie;
-        set beresp.http.X-Cache-Stream = "YES";
-        set beresp.http.X-Cacheable = "NO - File Stream";
-        set beresp.uncacheable = true;
-        set beresp.do_stream = true;
-        return(deliver);
-    }
-
     # cache all XML and RDF objects for 1 day
     if (beresp.http.Content-Type ~ "(text\/xml|application\/xml|application\/atom\+xml|application\/rss\+xml|application\/rdf\+xml)") {
         set beresp.ttl = 1d;
         set beresp.http.X-Varnish-Caching-Rule-Id = "xml-rdf-files";
         set beresp.http.X-Varnish-Header-Set-Id = "cache-in-proxy-24-hours";
     }
-    
-    # cache all static objects for 1 day
-    if (bereq.url ~ "^(/[a-zA-Z0-9\_\-]*)?/static/") {
-        set beresp.ttl = <VARNISH_STATIC_TTL>;
-        set beresp.http.X-Varnish-Caching-Rule-Id = "static-files";
-        set beresp.http.X-Varnish-Header-Set-Id = "cache-in-proxy-<VARNISH_STATIC_TTL>";
-    }
-    
+
     # Headers for webfonts and truetype fonts
     if (beresp.http.Content-Type ~ "(application\/vnd.ms-fontobject|font\/truetype|application\/font-woff|application\/x-font-woff)") {
         # fix for loading Font Awesome under IE11 on Win7, see #94853
@@ -317,222 +180,60 @@ sub vcl_backend_response {
         }
     }
 
-
-    # The object is not cacheable
-    if (beresp.http.Set-Cookie) {
-        set beresp.http.X-Cacheable = "NO - Set Cookie";
-        set beresp.ttl = 0s;
-        set beresp.uncacheable = true;
-    } elsif (beresp.http.Cache-Control ~ "private") {
-        set beresp.http.X-Cacheable = "NO - Cache-Control=private";
-        set beresp.uncacheable = true;
-        set beresp.ttl = <VARNISH_BERESP_TTL>;
-    } elsif (beresp.http.Surrogate-control ~ "no-store") {
-        set beresp.http.X-Cacheable = "NO - Surrogate-control=no-store";
-        set beresp.uncacheable = true;
-        set beresp.ttl = <VARNISH_BERESP_TTL>;
-    } elsif (!beresp.http.Surrogate-Control && beresp.http.Cache-Control ~ "no-cache|no-store") {
-        set beresp.http.X-Cacheable = "NO - Cache-Control=no-cache|no-store";
-        set beresp.uncacheable = true;
-        set beresp.ttl = <VARNISH_BERESP_TTL>;
-    } elsif (beresp.http.Vary == "*") {
-        set beresp.http.X-Cacheable = "NO - Vary=*";
-        set beresp.uncacheable = true;
-        set beresp.ttl = <VARNISH_BERESP_TTL>;
-
-    # ttl handling
-    } elsif (beresp.ttl < 0s) {
-        set beresp.http.X-Cacheable = "NO - TTL < 0";
-        set beresp.uncacheable = true;
-    } elsif (beresp.ttl == 0s) {
-        set beresp.http.X-Cacheable = "NO - TTL = 0";
-        set beresp.uncacheable = true;
-
-    # Varnish determined the object was cacheable
-    } else {
-        set beresp.http.X-Cacheable = "YES";
+    # intecept 5xx errors here. Better reliability than in Apache
+    if ( beresp.status >= 500 && beresp.status <= 505) {
+        return (abandon);
     }
-
-    # Do not cache 5xx errors
-    if (beresp.status >= 500 && beresp.status < 600) {
-        unset beresp.http.Cache-Control;
-        set beresp.http.X-Cache = "NOCACHE";
-        set beresp.http.Cache-Control = "no-cache, max-age=0, must-revalidate";
-        set beresp.ttl = 0s;
-        set beresp.http.Pragma = "no-cache";
-        set beresp.uncacheable = true;
-        return(deliver);
-    }
-
-    # TODO this one is very plone specific and should be removed, not sure if its needed any more
-    if (bereq.url ~ "(createObject|@@captcha)") {
-        set beresp.uncacheable = true;
-        return(deliver);
-    }
-
-    set beresp.grace = <VARNISH_BERESP_GRACE>;
-    set beresp.keep = <VARNISH_BERESP_KEEP>;
-    return (deliver);
-
 }
 
-
-
 sub vcl_deliver {
-    set resp.http.grace = req.http.grace;
+    # needed for ban-lurker, we remove it here
+    unset resp.http.x-url;
 
     # add a note in the header regarding the backend
     set resp.http.X-Backend = req.backend_hint;
 
+    # add more cache control params for authenticated users so browser does NOT cache, also do not cache ourselves
+    if (resp.http.X-Backend ~ "auth") {
+      set resp.http.Cache-Control = "max-age=0, no-cache, no-store, private, must-revalidate, post-check=0, pre-check=0";
+      set resp.http.Pragma = "no-cache";
+    }
+
     if (obj.hits > 0) {
-         set resp.http.X-Cache = "HIT";
+        set resp.http.X-Cache = "HIT";
     } else {
         set resp.http.X-Cache = "MISS";
     }
-    /* Rewrite s-maxage to exclude from intermediary proxies
-      (to cache *everywhere*, just use 'max-age' token in the response to avoid
-      this override) */
-    if (resp.http.Cache-Control ~ "s-maxage") {
-        set resp.http.Cache-Control = regsub(resp.http.Cache-Control, "s-maxage=[0-9]+", "s-maxage=0");
-    }
-    /* Remove proxy-revalidate for intermediary proxies */
-    if (resp.http.Cache-Control ~ ", proxy-revalidate") {
-        set resp.http.Cache-Control = regsub(resp.http.Cache-Control, ", proxy-revalidate", "");
-    }
-    # set audio, video and pdf for inline display
-    if (resp.http.Content-Type ~ "audio/" || resp.http.Content-Type ~ "video/" || resp.http.Content-Type ~ "/pdf") {
-        set resp.http.Content-Disposition = regsub(resp.http.Content-Disposition, "attachment;", "inline;");
-    }
 
+    unset resp.http.error50x;
 }
 
+#sub vcl_purge {
+#    return (synth(200, "Purged"));
+#}
+
+#sub vcl_pass {
+#    return (fetch);
+#}
 
 sub vcl_backend_error {
   if ( beresp.status >= 500 && beresp.status <= 505) {
-    synthetic({"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
-            <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en-US" lang="en-US">
-            <head>
-            <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-            <style type="text/css">
-            html,
-            body {
-              height: 100%;
-              width: 100%;
-              padding: 0;
-              margin: 0;
-              border: 0;
-              overflow: auto;
-              background-color: #006699;
-              color: #fff;
-              font-family: Arial,sans-serif;
-            }
-            .vertical-align {
-              display: block;
-              width: 400px;
-              position: relative;
-              top: 50%;
-              *top: 25%;
-              -webkit-transform: translateY(-50%);
-              -ms-transform: translateY(-50%);
-              transform: translateY(-50%);
-              margin: 0 auto;
-            }
-            button,
-            a.button,
-            a.button:link,
-            a.button:visited {
-              -webkit-appearance: none;
-              -webkit-border-radius: 3px;
-              -moz-border-radius: 3px;
-              -ms-border-radius: 3px;
-              -o-border-radius: 3px;
-              border-radius: 3px;
-              -webkit-background-clip: padding;
-              -moz-background-clip: padding;
-              background-clip: padding-box;
-              background: #dddddd repeat-x;
-              background-image: -webkit-gradient(linear, 50% 0%, 50% 100%, color-stop(0%, #ffffff), color-stop(100%, #dddddd));
-              background-image: -webkit-linear-gradient(#ffffff, #dddddd);
-              background-image: -moz-linear-gradient(#ffffff, #dddddd);
-              background-image: -o-linear-gradient(#ffffff, #dddddd);
-              background-image: linear-gradient(#ffffff, #dddddd);
-              border: 1px solid;
-              border-color: #bbbbbb;
-              cursor: pointer;
-              color: #333333;
-              display: inline-block;
-              font: 15px/20px Arial, sans-serif;
-              overflow: visible;
-              margin: 0;
-              padding: 3px 10px;
-              text-decoration: none;
-              vertical-align: top;
-              width: auto;
-              *padding-top: 2px;
-              *padding-bottom: 0;
-            }
-            .btn-eea {
-              background: #478ea5 repeat-x;
-              background-image: -webkit-gradient(linear, 50% 0%, 50% 100%, color-stop(0%, #478ea5), color-stop(100%, #346f83));
-              background-image: -webkit-linear-gradient(#478ea5, #346f83);
-              background-image: -moz-linear-gradient(#478ea5, #346f83);
-              background-image: -o-linear-gradient(#478ea5, #346f83);
-              background-image: linear-gradient(#478ea5, #346f83);
-              border: 1px solid;
-              border-color: #265a6c;
-              color: white;
-            }
-            button:hover,
-            a.button:hover {
-              background-image:none;
-            }
-            hr {
-              opacity: 0.5;
-              margin: 12px 0;
-              border: 0!important;
-              height: 1px;
-              background: white;
-            }
-            a,
-            a:link,
-            a:visited {
-              color: white;
-            }
-            .huge {
-              font-size: 72px;
-            }
-            .clearfix:before,
-            .clearfix:after {
-                display:table;
-                content:" ";
-            }
-            .clearfix:after{
-                clear:both;
-            }
-            .pull-left {
-                float: left;
-            }
-            .pull-right {
-                float: right;
-            }
-            </style>
-            </head>
-            <body>
-            <div class="vertical-align">
-              <div style="text-align: center;">
-                <h2 style="margin: 12px 0;">Our apologies, the website has encountered an error.</h2>
-                <hr>
-                <p style="font-style: italic;">We have been notified by the error and will look at it as soon as possible. You may want to visit the <a href="https://status.eea.europa.eu">EEA Systems Status</a> site to see latest status updates from EEA Systems.</p>
-                <p style="font-size: 90%"><a href="http://www.eea.europa.eu/">European Environment Agency</a>, Kongens Nytorv 6, 1050 Copenhagen K, Denmark - Phone: +45 3336 7100</p>  <br>
-                </p>
-              </div>
-            </div>
-            <script type="text/javascript">
-              document.getElementById("focus").focus();
-            </script>
-            </body></html>
+    # synthetic(std.fileread("/etc/varnish/500msg.html"));
+    synthetic({"
+        <?xml version="1.0" encoding="utf-8"?>
+        <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+        <html>
+          <head>
+            <title>Varnish cache server: "} + beresp.status + " " + beresp.reason + {" </title>
+          </head>
+          <body>
+            <h1>Error "} + beresp.status + " " + beresp.reason + {"</h1>
+            <p>"} + beresp.reason + {"</p>
+            <hr>
+            <p>Varnish cache server</p>
+          </body>
+        </html>
     "});
-
   }
 
   return (deliver);
@@ -675,6 +376,25 @@ sub vcl_synth {
             <script type="text/javascript">
               document.getElementById("focus").focus();
             </script>
+            <!-- Matomo -->
+            <script type="text/javascript">
+              var _paq = _paq || [];
+              /* tracker methods like "setCustomDimension" should be called before "trackPageView" */
+              _paq.push(["setDocumentTitle", document.domain + "/" + document.title]);
+              _paq.push(["setCookieDomain", "*.eea.europa.eu"]);
+              _paq.push(['trackPageView']);
+              _paq.push(['enableLinkTracking']);
+              _paq.push(['trackEvent', 'Errors', beresp.status, window.location.href, 1]);
+              (function() {
+                var u="https://matomo.eea.europa.eu/";
+                _paq.push(['setTrackerUrl', u+'piwik.php']);
+                _paq.push(['setSiteId', '2']);
+                var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+                g.type='text/javascript'; g.async=true; g.defer=true; g.src=u+'piwik.js'; s.parentNode.insertBefore(g,s);
+              })();
+            </script>
+            <noscript><p><img src="https://matomo.eea.europa.eu/piwik.php?idsite=3&amp;rec=1" style="border:0;" alt="" /></p></noscript>
+            <!-- End Matomo Code -->
             </body></html>
     "});
     } else {
