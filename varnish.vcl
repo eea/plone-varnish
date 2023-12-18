@@ -272,12 +272,15 @@ sub vcl_backend_response {
     set beresp.http.X-Backend-Name = beresp.backend.name;
 
 
-    #text/html text/plain text/xml text/css text/javascript application/x-javascript application/javascript
+    #text/html text/plain text/xml text/css text/javascript application/x-javascript application/javascript image/svg+xml
     # GZip the cached content if possible
     if (beresp.http.content-type ~ "text") {
         set beresp.do_gzip = <VARNISH_GZIP_ENABLED>;
     }
     if (beresp.http.content-type ~ "javascript") {
+        set beresp.do_gzip = <VARNISH_GZIP_ENABLED>;
+    }
+    if (beresp.http.content-type ~ "svg\+xml") {
         set beresp.do_gzip = <VARNISH_GZIP_ENABLED>;
     }
 
