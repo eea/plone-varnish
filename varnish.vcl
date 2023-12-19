@@ -157,6 +157,9 @@ sub vcl_backend_response {
     if (beresp.http.content-type ~ "javascript") {
         set beresp.do_gzip = <VARNISH_GZIP_ENABLED>;
     }
+    if (beresp.http.content-type ~ "svg\+xml") {
+        set beresp.do_gzip = <VARNISH_GZIP_ENABLED>;
+    }
 
     if (beresp.http.content-type ~ "application/json") {
         set beresp.do_gzip = <VARNISH_GZIP_JSON_ENABLED>;
