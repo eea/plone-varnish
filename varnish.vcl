@@ -142,7 +142,7 @@ sub vcl_recv {
     }
 
     ## images
-    if (req.method == "GET" && req.url ~ "\.(gif|jpg|jpeg|bmp|png|tiff|tif|ico|img|tga|wmf)$") {
+    if (req.method == "GET" && req.url ~ "\.(gif|jpg|jpeg|bmp|png|tiff|tif|ico|img|tga|wmf|webp)$") {
         return(hash);
     }
 
