@@ -320,6 +320,10 @@ sub vcl_backend_response {
         }
     }
 
+    # Header does not exist
+    if (!beresp.http.Cache-Control) {
+         set beresp.ttl = <VARNISH_BERESP_TTL>;
+    }
 
     # The object is not cacheable
     if (beresp.http.Set-Cookie) {
