@@ -689,18 +689,17 @@ sub vcl_synth {
         <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
         "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
         <html>
-        <head>
-        <title>"} + resp.status + " " + resp.http.response + {"</title>
-        </head>
-        <body>
-        <h1>Error "} + resp.status + " " + resp.http.response + {"</h1>
-        <p>"} + resp.http.response + {"</p>
-        <h3>Sorry, an error occured. If this problem persists Contact EEA Web Team (web.helpdesk at eea.europa.eu)</h3>
-        <p>XID: "} + req.xid + {"</p>
-        <address>
-        <a href="http://www.varnish-cache.org/">Varnish</a>
-        </address>
-        </body>
+          <head>
+            <title>"} + resp.status + " " + resp.reason + {"</title>
+          </head>
+          <body>
+            <h1>Error "} + resp.status + " " + resp.reason + {"</h1>
+            <p>"} + resp.reason + {"</p>
+            <h3>This is a varnish generated html. If this problem persists Contact EEA Web Team (web.helpdesk at eea.europa.eu)</h3>
+            <p>XID: "} + req.xid + {"</p>
+            <hr>
+            <p>Varnish cache server</p>
+          </body>
         </html>
         "});
     }
