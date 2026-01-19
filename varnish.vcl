@@ -102,7 +102,6 @@ sub vcl_recv {
         return(pass);
     }
 
-
     # Cache static files, except the big ones
     if (req.method == "GET" && req.url ~ "^(/[a-zA-Z0-9\_\-]*)?/static/" && !(req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$")) {
         return(hash);
@@ -126,7 +125,7 @@ sub vcl_recv {
     }
 
     # Do not cache login form
-    if (req.url ~ "login_form$" || req.url ~ "login$")
+    if (req.url ~ "login_form$" || req.url ~ "login$" || req.url ~ "login-authomatic/microsoft" )
     {
         # pass (no caching)
         unset req.http.If-Modified-Since;
