@@ -271,15 +271,6 @@ sub vcl_backend_response {
     
     set beresp.http.X-Backend-Name = beresp.backend.name;
 
-    # If pass then uncacheable, do not store url
-    if (bereq.uncacheable) {
-        set beresp.uncacheable = true;
-        set beresp.ttl = 0s;
-    }
-    else {
-        set beresp.http.x-url = regsub(bereq.url, "\/\/", "/"); 
-    }
-
 
     #text/html text/plain text/xml text/css text/javascript application/x-javascript application/javascript image/svg+xml
     # GZip the cached content if possible
@@ -306,6 +297,18 @@ sub vcl_backend_response {
         set beresp.do_stream = true;
         return(deliver);
     }
+
+    # If pass then uncacheable, do not store url
+    if (bereq.uncacheable) {
+        set beresp.uncacheable = true;
+        set beresp.ttl = 0s;
+        set beresp.http.X-Cacheable = "NO - PASS";
+        return(deliver);
+    }
+    else {
+        set beresp.http.x-url = regsub(bereq.url, "\/\/", "/"); 
+    }
+
 
     # cache all XML and RDF objects for 1 day
     if (beresp.http.Content-Type ~ "(text\/xml|application\/xml|application\/atom\+xml|application\/rss\+xml|application\/rdf\+xml)") {
