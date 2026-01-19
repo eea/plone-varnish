@@ -114,7 +114,7 @@ sub vcl_recv {
        #css and js files under @@flourish need authenticated user 
        if (req.http.UrlNoQs ~ "\.(js|css)$" && !(req.url ~ "@@flourish") ) {
             unset req.http.cookie;
-            return(pipe);
+            return(hash);
         }
 
         set req.http.X-Username = regsub( req.http.Cookie, "^.*?__ac(|__\w+)=([^;]*);*.*$", "\2" );
@@ -268,8 +268,17 @@ sub vcl_backend_fetch{
 sub vcl_backend_response {
     # needed for ban-lurker
     # Cleanup double slashes: '//' -> '/' - refs #95891
-    set beresp.http.x-url = regsub(bereq.url, "\/\/", "/");
+    
     set beresp.http.X-Backend-Name = beresp.backend.name;
+
+    # If pass then uncacheable, do not store url
+    if (bereq.uncacheable) {
+        set beresp.uncacheable = true;
+        set beresp.ttl = 0s;
+    }
+    else {
+        set beresp.http.x-url = regsub(bereq.url, "\/\/", "/"); 
+    }
 
 
     #text/html text/plain text/xml text/css text/javascript application/x-javascript application/javascript image/svg+xml
