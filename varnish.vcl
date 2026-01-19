@@ -125,7 +125,7 @@ sub vcl_recv {
     }
 
     # Do not cache login form
-    if (req.url ~ "login_form$" || req.url ~ "login$" || req.url ~ "login-authomatic/microsoft" )
+    if (req.url ~ "login_form$" || req.url ~ "login$" || req.url ~ "^login-authomatic(/|$)" )
     {
         # pass (no caching)
         unset req.http.If-Modified-Since;
