@@ -180,12 +180,10 @@ sub vcl_recv {
     }
 
 
-    # Large static files should be piped, so they are delivered directly to the end-user without
-    # waiting for Varnish to fully read the file first.
-
+    # Large static files should be passed, as we don't cache them
     if (req.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
         unset req.http.Cookie;
-        return(pipe);
+        return(pass);
     }
 
 
@@ -288,6 +286,14 @@ sub vcl_backend_response {
         set beresp.do_gzip = <VARNISH_GZIP_JSON_ENABLED>;
     }
 
+    # Headers for webfonts and truetype fonts
+    if (beresp.http.Content-Type ~ "(application\/vnd.ms-fontobject|font\/truetype|application\/font-woff|application\/x-font-woff)") {
+        # fix for loading Font Awesome under IE11 on Win7, see #94853
+        if (bereq.http.User-Agent ~ "Trident" || bereq.http.User-Agent ~ "Windows NT 6.1") {
+            unset beresp.http.Vary;
+        }
+    }
+
     # stream possibly large files
     if (bereq.url ~ "^[^?]*\.(mp[34]|rar|rpm|tar|tgz|gz|wav|zip|bz2|xz|7z|avi|mov|ogm|mpe?g|mk[av]|webm)(\?.*)?$") {
         unset beresp.http.set-cookie;
@@ -324,13 +330,7 @@ sub vcl_backend_response {
         set beresp.http.X-Varnish-Header-Set-Id = "cache-in-proxy-<VARNISH_STATIC_TTL>";
     }
     
-    # Headers for webfonts and truetype fonts
-    if (beresp.http.Content-Type ~ "(application\/vnd.ms-fontobject|font\/truetype|application\/font-woff|application\/x-font-woff)") {
-        # fix for loading Font Awesome under IE11 on Win7, see #94853
-        if (bereq.http.User-Agent ~ "Trident" || bereq.http.User-Agent ~ "Windows NT 6.1") {
-            unset beresp.http.Vary;
-        }
-    }
+
 
     # Header does not exist
     if (!beresp.http.Cache-Control) {
