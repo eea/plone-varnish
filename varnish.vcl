@@ -419,7 +419,8 @@ sub vcl_deliver {
         set resp.http.Cache-Control = regsub(resp.http.Cache-Control, ", proxy-revalidate", "");
     }
     # set audio, video and pdf for inline display
-    if (resp.http.Content-Type ~ "audio/" || resp.http.Content-Type ~ "video/" || resp.http.Content-Type ~ "/pdf") {
+    # only when the header exists, regsub on an unset header would add an empty one
+    if (resp.http.Content-Disposition && (resp.http.Content-Type ~ "audio/" || resp.http.Content-Type ~ "video/" || resp.http.Content-Type ~ "/pdf")) {
         set resp.http.Content-Disposition = regsub(resp.http.Content-Disposition, "attachment;", "inline;");
     }
 
