@@ -13,7 +13,6 @@ sub vcl_init {
 }
 
 acl purge {
-    "localhost";
     "127.0.0.1";
     "172.17.0.0/16"; # Docker network
     "10.42.0.0/16";  # Rancher network
